@@ -85,7 +85,7 @@ stages:
               AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
               AZURE_OPENAI_CHAT_DEPLOYMENT: $(AZURE_OPENAI_CHAT_DEPLOYMENT)
               AZURE_OPENAI_API_VERSION: $(AZURE_OPENAI_API_VERSION)
-              RAGAS_FAITHFULNESS_MIN: "0.80"
+              RAGAS_FAITHFULNESS_MIN: "0.90"
 
           - task: PublishBuildArtifacts@1
             condition: always()
