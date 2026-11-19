@@ -93,7 +93,7 @@ stages:
               PathtoPublish: gates/ragas_result.json
               ArtifactName: ragas-result
 
-  # ------------------------------------------------------------------
+  # -----------------------
   - stage: DeployStaging
     displayName: Deploy to staging (mock)
     dependsOn: QualityGate
