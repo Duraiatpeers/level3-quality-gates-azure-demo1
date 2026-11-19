@@ -1,0 +1,6 @@
+[
+  {"question": "What is the maximum operating pressure of the PX-100?", "must_contain": "10 bar", "must_not_contain": "16 bar"},
+  {"question": "How long is the warranty on the PX-200?", "must_contain": "24 months", "must_not_contain": "12 months"},
+  {"question": "How often should the PX-100 be serviced?", "must_contain": "12 months", "must_not_contain": "24 months"},
+  {"question": "What supply voltage does the PX-100 use?", "must_contain": "230 V", "must_not_contain": "110 V"}
+]

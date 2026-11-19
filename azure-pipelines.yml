@@ -1,0 +1,121 @@
+# ----------------------------------------------------------------------
+# M3.5 demo: quality gates in front of a (mock) deployment
+# ----------------------------------------------------------------------
+# Do not run this on your computer. It runs in Azure DevOps. Steps to set it up are in README.md.
+#
+# Flow:   Build  ->  Quality gate (Promptfoo and RAGAS side by side)  ->  Deploy to staging (mock)
+# If either gate fails, the Deploy stage is skipped. That is the whole point of the demo.
+# Deploy runs only on main. On a pull request you get Build and the gates, and no deploy.
+# ----------------------------------------------------------------------
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: px-eval-secrets
+  - name: PROMPTFOO_DISABLE_TELEMETRY
+    value: "1"
+
+stages:
+  # ------------------------------------------------------------------
+  - stage: Build
+    displayName: Build
+    jobs:
+      - job: Build
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.12"
+
+          - script: python -m py_compile app/px_mock.py gates/ragas_gate.py gates/deploy_mock.py
+            displayName: Check the code compiles
+
+  # ------------------------------------------------------------------
+  - stage: QualityGate
+    displayName: Quality gate
+    dependsOn: Build
+    jobs:
+      - job: Promptfoo
+        displayName: Promptfoo gate (right or wrong answers)
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.12"
+
+          - task: NodeTool@0
+            inputs:
+              versionSpec: "22.x"
+
+          - script: |
+              npm install promptfoo@0.125.1
+              npx promptfoo eval -c promptfooconfig.yaml --no-cache -o results.junit.xml
+            workingDirectory: promptfoo
+            displayName: Run Promptfoo (fails if any answer is wrong)
+            env:
+              PROMPTFOO_PYTHON: python
+              PROMPTFOO_PASS_RATE_THRESHOLD: "100"
+
+          - task: PublishTestResults@2
+            condition: always()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: promptfoo/results.junit.xml
+              testRunTitle: Promptfoo gate
+
+      - job: Ragas
+        displayName: RAGAS gate (faithfulness)
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.12"
+
+          - script: pip install -r requirements.txt
+            displayName: Install RAGAS
+
+          - script: python ragas_gate.py
+            workingDirectory: gates
+            displayName: Run RAGAS faithfulness gate (fails below the minimum)
+            env:
+              AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+              AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+              AZURE_OPENAI_CHAT_DEPLOYMENT: $(AZURE_OPENAI_CHAT_DEPLOYMENT)
+              AZURE_OPENAI_API_VERSION: $(AZURE_OPENAI_API_VERSION)
+              RAGAS_FAITHFULNESS_MIN: "0.80"
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              PathtoPublish: gates/ragas_result.json
+              ArtifactName: ragas-result
+
+  # ------------------------------------------------------------------
+  - stage: DeployStaging
+    displayName: Deploy to staging (mock)
+    dependsOn: QualityGate
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployMock
+        displayName: Deploy to staging (mock)
+        environment: px-staging
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: "3.12"
+
+                - script: python gates/deploy_mock.py
+                  displayName: Mock deploy (copies the app and writes deployment.json)
+
+                - task: PublishBuildArtifacts@1
+                  inputs:
+                    PathtoPublish: $(Build.ArtifactStagingDirectory)/px-staging
+                    ArtifactName: px-staging
